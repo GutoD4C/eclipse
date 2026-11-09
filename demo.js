@@ -16,7 +16,7 @@ window.ECLIPSE_DEMO = { async request(path, options) {
   const catalog=window.ECLIPSE_PUBLIC_ADMIN?.products()||demoProducts;
   if (path === 'categories') {
     const active=new Set(catalog.flatMap(p=>(p.categoryKeys||[])));
-    return demoCategories.filter(category=>active.has(category.slug));
+    return (window.ECLIPSE_PUBLIC_ADMIN?.categories()||demoCategories).filter(category=>active.has(category.slug));
   }
   if (path === 'quote') {
     const input = JSON.parse(options?.body || '{}');
