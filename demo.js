@@ -41,7 +41,9 @@ window.ECLIPSE_DEMO = { async request(path, options) {
   }
   const q=new URLSearchParams(path.split('?')[1]);
   const categoryKeys=(q.get('category')||'').split(',').filter(Boolean);
-  let products=catalog.filter(p=>(!q.get('audience')||p.audiences.includes(q.get('audience')))&&(!categoryKeys.length||categoryKeys.some(key=>p.categoryKeys.includes(key)))&&(!q.get('search')||p.name.toLocaleLowerCase('pt-BR').includes(q.get('search').toLocaleLowerCase('pt-BR'))));
+  const searchKey=value=>String(value??'').normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
+  const search=searchKey(q.get('search'));
+  let products=catalog.filter(p=>(!q.get('audience')||p.audiences.includes(q.get('audience')))&&(!categoryKeys.length||categoryKeys.some(key=>p.categoryKeys.includes(key)))&&(!search||searchKey([p.name,p.brand,p.sku].join(' ')).includes(search)));
   if(q.get('scope')==='offers'){
     products=products.filter(p=>p.sale);
     const type=q.get('offerType');
