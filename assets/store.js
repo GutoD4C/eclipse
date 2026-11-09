@@ -1,5 +1,5 @@
 /* Eclipse storefront. No admin credentials or write endpoints are exposed here. */
-(() => {
+(async () => {
   'use strict';
   const money = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -93,14 +93,18 @@
     }
   }
   const cartStorageKey=cfg.demo?'eclipse-demo-cart-v5':'eclipse-cart-v1';
-  const departments=window.ECLIPSE_DEPARTMENTS||{};
+  const activeCategories=await request('categories').catch(()=>[]);
+  const activeSlugs=new Set(activeCategories.map(category=>category.slug));
+  const departments=Object.fromEntries(Object.entries(window.ECLIPSE_DEPARTMENTS||{}).map(([slug,department])=>[
+    slug,{...department,groups:department.groups.map(group=>({...group,items:group.items.filter(item=>activeSlugs.has(item.slug))}))}
+  ]));
   const profileKey=cfg.demo?'eclipse-demo-profile-v1':'eclipse-profile-v1';
   let profile=null;try{profile=normalizeProfile(JSON.parse(localStorage.getItem(profileKey)||'null'));}catch{}
   let cart=[];
   try{cart=validateCart(JSON.parse(localStorage.getItem(cartStorageKey)||'[]'));}catch{}
   let shownPhotoColor=undefined,photoIndex=0;
   let directItems=null,current=null,choices={},productSequence=0,listSequence=0;
-  let categories=[],state={view:'home',audience:'',category:'',search:'',stock:false,page:1},pages=1;
+  let state={view:'home',audience:'',category:'',search:'',stock:false,page:1},pages=1;
   const audiences=Object.entries(departments).map(([slug,d])=>[slug,d.label.toUpperCase()]);
   const storeAddress=cfg.storeAddress||'Rua Dr. Bernardino de Campos, 220 — Centro, Cachoeira Paulista/SP — CEP 12630-000';
   const mapsQuery=encodeURIComponent('Eclipse, '+storeAddress);
@@ -178,7 +182,7 @@
       <summary>${escape(label)}</summary>
       <div class="ec-mega">
        <div class="ec-mega-intro"><strong>${escape(label)}</strong><a class="ec-view-all" href="#catalogo?publico=${slug}">Ver tudo ↗</a></div>
-       <div class="ec-department-groups">${departments[slug].groups.map((group,index)=>group.items.length===1
+       <div class="ec-department-groups">${departments[slug].groups.map((group,index)=>!group.items.length?'':group.items.length===1
         ?`<a class="ec-mega-category" href="#catalogo?publico=${slug}&amp;categoria=${group.items[0].slug}">${escape(group.items[0].name)} ↗</a>`
         :`<details class="ec-category-group"><summary>${escape(group.name)}</summary><div>
          <a class="ec-mega-category" href="#catalogo?publico=${slug}&amp;categoria=grupo-${index}">Ver categoria ↗</a>
@@ -250,13 +254,14 @@
     const department=departments[state.audience];
     $('#ec-mobile-filters').textContent=department?'Filtros · '+department.label:'Filtros';
     const departmentSelect=`<label class="ec-category-select-label" for="ec-department-select">Departamento</label><select id="ec-department-select"><option value="">Todos</option>${Object.entries(departments).map(([slug,d])=>`<option value="${slug}" ${state.audience===slug?'selected':''}>${escape(d.label)}</option>`).join('')}</select>`;
-    const categorySelect=department?`<label class="ec-category-select-label" for="ec-category-select">Categoria</label><select id="ec-category-select"><option value="">Todas as categorias</option>
-      ${department.groups.map((group,index)=>group.items.length===1
+    const categorySelect=department?.groups.some(group=>group.items.length)?`<label class="ec-category-select-label" for="ec-category-select">Categoria</label><select id="ec-category-select"><option value="">Todas as categorias</option>
+      ${department.groups.map((group,index)=>!group.items.length?'':group.items.length===1
         ?`<option value="${group.items[0].slug}">${escape(group.items[0].name)}</option>`
         :`<optgroup label="${escape(group.name)}"><option value="grupo-${index}">Tudo em ${escape(group.name)}</option>${group.items.map(item=>`<option value="${item.slug}">${escape(item.name)}</option>`).join('')}</optgroup>`).join('')}
     </select>`:'';
     $('#ec-categories').innerHTML=departmentSelect+categorySelect;
-    if(department)$('#ec-category-select').value=state.category;
+    const select=$('#ec-category-select');
+    if(select&&[...select.options].some(option=>option.value===state.category))select.value=state.category;
     root.querySelectorAll('[data-department]').forEach(link=>{
       if(link.dataset.department===state.audience)link.setAttribute('aria-current','page');
       else link.removeAttribute('aria-current');
@@ -364,7 +369,7 @@
     try{
       const scope=state.view==='offers'?'offers':state.view==='new'?'new':'all';
       const group=state.category.match(/^grupo-(\d+)$/);
-      const category=group?(departments[state.audience]?.groups[Number(group[1])]?.items||[]).map(item=>item.slug).join(','):state.category;
+      const category=group?((window.ECLIPSE_DEPARTMENTS||{})[state.audience]?.groups[Number(group[1])]?.items||[]).map(item=>item.slug).join(','):state.category;
       const data=await listProducts(new URLSearchParams({scope,offerType:state.view==='offers'?state.offerType:'',order:state.order||'recent',audience:activeAudience(),category,search:state.search,page:state.page,stock:state.stock?'1':'0'}),turn);
       if(turn!==listSequence)return;
       const products=await Promise.all(data.products.map(withComboPhotos));
@@ -646,6 +651,5 @@
   root.addEventListener('error',event=>{if(event.target.tagName==='IMG'&&event.target.nextElementSibling?.classList.contains('ec-photo-fallback')){event.target.hidden=true;event.target.nextElementSibling.hidden=false;}},true);
   [pDialog,cDialog].forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}}));
   window.addEventListener('hashchange',applyRoute);
-  categories=Object.entries(departments).flatMap(([audience,d])=>d.groups.flatMap(g=>g.items.map(i=>({...i,audience}))));
   renderCart();updateGreeting();applyRoute();if(!profile)openWelcome();
 })();
