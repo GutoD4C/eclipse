@@ -305,7 +305,6 @@ function openBasket(id=0) {
  const missing=[...selected.keys()].filter(id=>!eligible.some(p=>p.id===id));
  for(const id of missing)selected.delete(id);
  let active=null;
- const normalize=value=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
 
  actionDialog(combo?'Editar combo':'Criar combo',`
   <div class="editor-grid">
@@ -372,9 +371,9 @@ function openBasket(id=0) {
   </div>`;
  };
  const drawAvailable=()=>{
-  const term=normalize(searchBox.value.trim());
+  const term=searchKey(searchBox.value);
   const scroll=list.scrollTop;
-  list.innerHTML=eligible.filter(p=>!selected.has(p.id)&&p.published!==false&&p.variants.some(v=>v.available)&&normalize(p.name+' '+p.brand+' '+p.sku).includes(term))
+  list.innerHTML=eligible.filter(p=>!selected.has(p.id)&&p.published!==false&&p.variants.some(v=>v.available)&&searchKey(p.name+' '+p.brand+' '+p.sku).includes(term))
    .map(row).join('')||'<p class="helper">Nenhum produto encontrado.</p>';
   list.scrollTop=scroll;
  };
