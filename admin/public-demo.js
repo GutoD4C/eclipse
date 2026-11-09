@@ -1,6 +1,7 @@
 (() => {
  'use strict';
  const key='eclipse-public-admin-v1';
+ const maxProducts=2000;
  const sessionKey=key+':session';
  const copy=value=>JSON.parse(JSON.stringify(value));
  const defaults=()=>({products:copy(demoProducts),users:{admin:'admin'},settings:{
@@ -81,7 +82,8 @@
  }
  function validatedBackup(body){
   const invalid=()=>{throw Error('Arquivo de catálogo inválido. O catálogo atual foi preservado.');};
-  if(body.schema!=='eclipse-prototype-v1'||!Array.isArray(body.products)||body.products.length>5000)invalid();
+  if(body.schema!=='eclipse-prototype-v1'||!Array.isArray(body.products))invalid();
+  if(body.products.length>maxProducts)throw Error('O backup excede o limite de 2.000 modelos. O catálogo atual foi preservado.');
   const productIds=new Set(),skus=new Set();
   return body.products.map(product=>{
    if(!product||!Number.isSafeInteger(product.id)||product.id<1||productIds.has(product.id)||
@@ -176,6 +178,7 @@
    localStorage.removeItem(key);localStorage.removeItem('eclipse-demo-cart-v5');sessionStorage.removeItem(sessionKey);return {ok:true};
   }
   if(path==='products'||path.startsWith('products/')){
+   if(method==='POST'&&state.products.length>=maxProducts)throw Error('O catálogo aceita até 2.000 modelos.');
    const id=method==='POST'?Math.max(state.lastProductId||0,...state.products.map(p=>p.id))+1:Number(path.split('/')[1]);
    const old=state.products.find(p=>p.id===id);
    if(method!=='POST'&&!old)throw Error('Produto não encontrado.');
