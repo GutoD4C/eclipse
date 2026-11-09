@@ -4,12 +4,29 @@
  const maxProducts=2000;
  const sessionKey=key+':session';
  const copy=value=>JSON.parse(JSON.stringify(value));
- const defaults=()=>({products:copy(demoProducts),users:{admin:'admin'},settings:{
+ const defaults=()=>({products:copy(demoProducts),demoCatalogExpanded:true,users:{admin:'admin'},settings:{
   phone:'',storeAddress:'Rua Dr. Bernardino de Campos, 220 — Centro, Cachoeira Paulista/SP',
   instagram:'https://www.instagram.com/lojaeclipsecp/',facebook:'https://www.facebook.com/eclipsecpoficial/'
  }});
  function read(){
-  try{return JSON.parse(localStorage.getItem(key))||defaults();}catch{return defaults();}
+  let state;
+  try{state=JSON.parse(localStorage.getItem(key));}catch{return defaults();}
+  if(!state)return defaults();
+  if(state.demoCatalogExpanded||!Array.isArray(state.products))return state;
+  const originals=demoProducts.filter(p=>p.id<=150&&!p.basket);
+  const extras=demoProducts.filter(p=>p.sku.startsWith('EC-EXTRA-'));
+  const stored=new Map(state.products.map(p=>[p.id,p.sku]));
+  if(originals.length!==150||extras.length!==150||!originals.every(p=>stored.get(p.id)===p.sku))return state;
+  const skus=new Set(state.products.map(p=>p.sku.toLowerCase()));
+  const missing=extras.filter(p=>!skus.has(p.sku.toLowerCase()));
+  if(state.products.length+missing.length>maxProducts)return state;
+  let id=Math.max(state.lastProductId||0,...stored.keys());
+  const added=missing.map(product=>{
+   id++;
+   return {...product,id,variants:product.variants.map((variant,index)=>({...variant,id:id*1000+index+1}))};
+  });
+  const expanded={...state,products:[...state.products,...added],lastProductId:id,demoCatalogExpanded:true};
+  try{save(expanded);return expanded;}catch{return state;}
  }
  function save(state){
   try{localStorage.setItem(key,JSON.stringify(state));}
@@ -192,7 +209,7 @@
    const valid=Array.isArray(categories)&&categories.every(item=>item&&typeof item.slug==='string'&&/^[a-z0-9-]+$/.test(item.slug)&&typeof item.name==='string'&&item.name.trim()&&item.name.length<=80&&Object.hasOwn(window.ECLIPSE_DEPARTMENTS||{},item.audience));
    const slugs=new Set(valid?categories.map(item=>item.slug):[]);
    if(!valid||slugs.size!==categories.length||products.some(p=>p.categoryKeys.some(slug=>!slugs.has(slug))))throw Error('O backup contém categorias inválidas ou ausentes.');
-   state.categories=categories;state.products=products;save(state);localStorage.removeItem('eclipse-demo-cart-v5');return {count:state.products.length};
+   state.categories=categories;state.products=products;state.demoCatalogExpanded=true;save(state);localStorage.removeItem('eclipse-demo-cart-v5');return {count:state.products.length};
   }
   if(path==='clear-catalog'&&method==='POST'){
    state.lastProductId=Math.max(state.lastProductId||0,...state.products.map(p=>p.id));state.products=[];save(state);localStorage.removeItem('eclipse-demo-cart-v5');return {ok:true};
