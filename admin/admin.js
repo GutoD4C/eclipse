@@ -112,6 +112,7 @@ async function renderUsers(){
 let offerType='promotions';
 const listFilters={department:'',status:'',order:'recent'};
 const searchKey=value=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
+const matchesProductSearch=(product,term)=>searchKey([product.name,product.brand,product.sku].join(' ')).includes(term);
 function filtered(){
  const term=searchKey(search);
  const rows=products.filter(p=>{
@@ -123,7 +124,7 @@ function filtered(){
   if(listFilters.status==='hidden'&&p.published!==false)return false;
   if(listFilters.status==='available'&&!p.available)return false;
   if(listFilters.status==='unavailable'&&p.available)return false;
-  return searchKey(p.name+' '+p.sku+' '+p.brand).includes(term);
+  return matchesProductSearch(p,term);
  });
  return rows.sort(listFilters.order==='name'
   ?(a,b)=>a.name.localeCompare(b.name,'pt-BR')
@@ -265,9 +266,10 @@ function openStock(id) {
 }
 function openOffer(id) {
  const product=products.find(p=>p.id===id);
- const options=products.filter(p=>!p.basket).map(p=>`<option value="${p.id}">${esc(p.name+' · '+p.sku)}</option>`).join('');
+ const eligible=products.filter(p=>!p.basket);
+ const options=list=>list.map(p=>`<option value="${p.id}">${esc(p.name+' · '+p.sku)}</option>`).join('');
  actionDialog(product?.basket?'Preço do combo':'Configurar oferta',`
-  ${product?`<p>${esc(product.name)} · Preço normal a partir de ${money(product.regular)}</p>`:`<label class="field">Produto<select id="offer-product" required><option value="">Selecione um produto</option>${options}</select></label>`}
+  ${product?`<p>${esc(product.name)} · Preço normal a partir de ${money(product.regular)}</p>`:`<label class="field">Buscar produtos<input id="offer-search" type="search" placeholder="Nome, marca ou referência"></label><label class="field">Produto<select id="offer-product" required><option value="">Selecione um produto</option>${options(eligible)}</select></label>`}
   ${product?.basket?'':`<label class="field">Tipo de desconto<select id="offer-mode"><option value="percent">Porcentagem (%)</option><option value="amount">Valor em reais (R$)</option></select></label>`}
   <label class="field">${product?.basket?'Preço do combo (R$)':'Desconto'}<input id="offer-value" type="number" min="0.01" step="0.01" required value="${product?.basket?product.price:''}"></label><p class="notice" id="offer-preview" role="status"></p>`,()=>{
    const value=Number($('#offer-value').value);
@@ -292,6 +294,14 @@ function openOffer(id) {
   if(min<0){result.textContent='O desconto excede o preço normal de uma combinação.';return;}
   result.textContent='Preço após o desconto: '+money(min)+(max-min>.005?' a '+money(max):'');
  };
+ const selector=$('#offer-product');
+ $('#offer-search')?.addEventListener('input',event=>{
+  const term=searchKey(event.target.value), selected=selector.value;
+  const matches=eligible.filter(p=>String(p.id)===selected||matchesProductSearch(p,term));
+  selector.innerHTML='<option value="">'+(matches.length?'Selecione um produto':'Nenhum produto encontrado')+'</option>'+options(matches);
+  selector.value=selected;
+  preview();
+ });
  for(const id of ['#offer-value','#offer-mode','#offer-product']){
   $(id)?.addEventListener('input',preview);
   $(id)?.addEventListener('change',preview);
@@ -373,7 +383,7 @@ function openBasket(id=0) {
  const drawAvailable=()=>{
   const term=searchKey(searchBox.value);
   const scroll=list.scrollTop;
-  list.innerHTML=eligible.filter(p=>!selected.has(p.id)&&p.published!==false&&p.variants.some(v=>v.available)&&searchKey(p.name+' '+p.brand+' '+p.sku).includes(term))
+  list.innerHTML=eligible.filter(p=>!selected.has(p.id)&&p.published!==false&&p.variants.some(v=>v.available)&&matchesProductSearch(p,term))
    .map(row).join('')||'<p class="helper">Nenhum produto encontrado.</p>';
   list.scrollTop=scroll;
  };
