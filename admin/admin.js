@@ -42,11 +42,54 @@ async function start(){view='dashboard';await reload();shell();render();}
 const totalStock=p=>p.variants.filter(v=>v.available).length;
 function render(){root.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('active',button.dataset.view===view));if(view==='dashboard')dashboard();else if(view==='categories')renderCategories();else if(view==='settings')settings();else if(view==='backups')backups();else if(view==='users'&&user==='admin')renderUsers();else productList();}
 function renderCategories(){
- const used=new Set(products.flatMap(product=>product.categoryKeys||[]));
- $('#content').innerHTML=heading('Categorias','Crie categorias por departamento. Só categorias sem produtos podem ser removidas.')+
- `<form class="card" id="category-form"><label class="field">Departamento<select id="category-audience" required>${Object.entries(departments).map(([slug,d])=>`<option value="${esc(slug)}">${esc(d.label)}</option>`).join('')}</select></label>
- <label class="field">Nome da categoria<input id="category-name" required maxlength="80"></label><button class="button">Adicionar categoria</button></form>
- ${Object.entries(departments).map(([audience,d])=>`<section class="card"><h2>${esc(d.label)}</h2><ul>${categories.filter(item=>item.audience===audience).map(item=>`<li>${esc(item.name)} ${used.has(item.slug)?'<small>Em uso</small>':`<button type="button" class="text-button" data-remove-category="${esc(item.slug)}">Remover</button>`}</li>`).join('')}</ul></section>`).join('')}`;
+ const previousSearch=$('#category-search')?.value||'';
+ const previousDepartment=$('#category-filter')?.value||'';
+ const departmentOptions=Object.entries(departments).map(([slug,d])=>`<option value="${esc(slug)}">${esc(d.label)}</option>`).join('');
+ const counts=new Map();
+ for(const product of products){
+  for(const slug of new Set(product.categoryKeys||[]))counts.set(slug,(counts.get(slug)||0)+1);
+ }
+ const sorted=categories.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+ $('#content').innerHTML=heading('Categorias','Organize as categorias do catálogo por departamento.')+`
+ <details class="product-section">
+  <summary>Adicionar categoria +</summary>
+  <form id="category-form">
+   <div class="editor-grid">
+    <label class="field">Departamento<select id="category-audience" required>${departmentOptions}</select></label>
+    <label class="field">Nome da categoria<input id="category-name" required maxlength="80"></label>
+   </div>
+   <button class="button lime">Adicionar categoria</button>
+  </form>
+ </details>
+ <div class="catalog-tools">
+  <label class="field">Buscar<input id="category-search" type="search" placeholder="Nome da categoria" value="${esc(previousSearch)}"></label>
+  <label class="field">Departamento<select id="category-filter"><option value="">Todos</option>${departmentOptions}</select></label>
+ </div>
+ <p id="category-count" class="helper" role="status"></p>
+ <div id="product-list"></div>`;
+ const searchInput=$('#category-search');
+ const filter=$('#category-filter');
+ filter.value=previousDepartment;
+ $('#category-audience').value=filter.value||$('#category-audience').options[0].value;
+ function renderCategoryRows(){
+  const term=searchKey(searchInput.value);
+  const rows=sorted.filter(item=>(!filter.value||item.audience===filter.value)&&searchKey(item.name).includes(term));
+  $('#category-count').textContent=rows.length===1?'1 categoria':rows.length+' categorias';
+  $('#product-list').innerHTML=rows.length?`<div class="table-scroll"><table><thead><tr>
+   <th>Categoria</th><th>Produtos vinculados</th><th>Situação</th><th>Ações</th>
+  </tr></thead><tbody>${rows.map(item=>{
+   const count=counts.get(item.slug)||0;
+   return `<tr>
+    <td><span class="name">${esc(item.name)}</span><small>${esc(departments[item.audience]?.label||item.audience)}</small></td>
+    <td>${count} ${count===1?'produto':'produtos'}</td>
+    <td>${count?'<span class="pill">Em uso</span>':'<span class="pill gray">Sem produtos</span>'}</td>
+    <td><div class="row-actions">${count?'<small>Mova os produtos vinculados para remover.</small>':`<button type="button" class="danger" data-remove-category="${esc(item.slug)}" aria-label="Remover ${esc(item.name)}">Remover</button>`}</div></td>
+   </tr>`;
+  }).join('')}</tbody></table></div>`:'<div class="empty">Nenhuma categoria encontrada.</div>';
+ }
+ searchInput.oninput=renderCategoryRows;
+ filter.onchange=renderCategoryRows;
+ renderCategoryRows();
  $('#category-form').onsubmit=async event=>{
   event.preventDefault();
   const button=event.currentTarget.querySelector('button');
