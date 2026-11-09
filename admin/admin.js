@@ -1,7 +1,8 @@
 (() => {
 'use strict';
 const bySize=(a,b)=>window.eclipseCompareSizes(a.attributes.Tamanho,b.attributes.Tamanho);
-const root=document.getElementById('admin-app'),D=window.ECLIPSE_DEPARTMENTS||{};
+const root=document.getElementById('admin-app'),departments=window.ECLIPSE_DEPARTMENTS||{};
+let D=departments,categories=[];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=v=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v);
 const publicDemo=window.ECLIPSE_PUBLIC_ADMIN;
@@ -23,11 +24,39 @@ function login(message=''){
  $('#restore-demo-login')?.addEventListener('click',async()=>{await api('restore-login',{method:'POST'});login('Senha de teste restaurada.');});
  $('#login-form').addEventListener('submit',async event=>{event.preventDefault();const button=$('#login-form button');button.disabled=true;try{const session=await api('login',{method:'POST',body:JSON.stringify({username:$('#username').value,password:$('#password').value})});csrf=session.csrf;user=session.username;await start();}catch(error){$('#login-error').textContent=error.message;}finally{if(button.isConnected)button.disabled=false;}});
 }
-function shell(){root.innerHTML=`<div class="layout"><aside class="sidebar"><a class="brand" href="${storefront}" target="_blank" rel="noopener"><img src="${logo}" alt="Eclipse"><small>ADMINISTRAÇÃO</small></a><button id="adm-menu" type="button" aria-controls="adm-navigation" aria-expanded="false">☰ Menu</button><div id="adm-navigation"><nav aria-label="Administração">${[['dashboard','Painel'],['products','Produtos'],['stock','Disponibilidade'],['offers','Ofertas'],['new','Lançamentos'],['settings','Configurações'],['backups','Backups'],...(user==='admin'?[['users','Usuários']]:[])].map(([key,label])=>`<button data-view="${key}" class="${view===key?'active':''}">${label}</button>`).join('')}</nav><div class="sidebar-bottom">${publicDemo?'<button id="reset-demo" class="text-button">Restaurar demonstração</button>':''}<span>Conectado: ${esc(user)}</span><button id="logout" class="text-button">Sair</button></div></div></aside><main class="main"><div class="topline"><span>${publicDemo?'DEMONSTRAÇÃO · ALTERAÇÕES NESTE NAVEGADOR':'PROTÓTIPO LOCAL · ECLIPSE'}</span><a href="${storefront}" target="_blank" rel="noopener">Abrir loja ↗</a></div>${demoNotice}<div id="content"></div></main></div><dialog id="editor" aria-labelledby="editor-title"><form id="product-form"><div class="dialog-header"><h2 id="editor-title">Produto</h2><button type="button" data-close aria-label="Fechar edição">×</button></div><div id="editor-body" class="editor-body"></div><div class="dialog-footer"><p id="editor-error" class="error" role="alert"></p><div><button type="button" class="text-button" data-close>Cancelar</button><button id="save-product" type="submit" class="button lime">Salvar produto ↗</button></div></div></form></dialog><dialog id="confirm-dialog" aria-labelledby="confirm-title"><div class="editor-body"><h2 id="confirm-title"></h2><p id="confirm-text" class="helper"></p><div class="checks"><button id="confirm-no" type="button" class="button outline">Cancelar</button><button id="confirm-yes" type="button" class="button">Confirmar</button></div></div></dialog><div id="toast" role="status"></div>`;bind();}
-async function reload(){products=(await api('products')).products;}
+function shell(){root.innerHTML=`<div class="layout"><aside class="sidebar"><a class="brand" href="${storefront}" target="_blank" rel="noopener"><img src="${logo}" alt="Eclipse"><small>ADMINISTRAÇÃO</small></a><button id="adm-menu" type="button" aria-controls="adm-navigation" aria-expanded="false">☰ Menu</button><div id="adm-navigation"><nav aria-label="Administração">${[['dashboard','Painel'],['products','Produtos'],['categories','Categorias'],['stock','Disponibilidade'],['offers','Ofertas'],['new','Lançamentos'],['settings','Configurações'],['backups','Backups'],...(user==='admin'?[['users','Usuários']]:[])].map(([key,label])=>`<button data-view="${key}" class="${view===key?'active':''}">${label}</button>`).join('')}</nav><div class="sidebar-bottom">${publicDemo?'<button id="reset-demo" class="text-button">Restaurar demonstração</button>':''}<span>Conectado: ${esc(user)}</span><button id="logout" class="text-button">Sair</button></div></div></aside><main class="main"><div class="topline"><span>${publicDemo?'DEMONSTRAÇÃO · ALTERAÇÕES NESTE NAVEGADOR':'PROTÓTIPO LOCAL · ECLIPSE'}</span><a href="${storefront}" target="_blank" rel="noopener">Abrir loja ↗</a></div>${demoNotice}<div id="content"></div></main></div><dialog id="editor" aria-labelledby="editor-title"><form id="product-form"><div class="dialog-header"><h2 id="editor-title">Produto</h2><button type="button" data-close aria-label="Fechar edição">×</button></div><div id="editor-body" class="editor-body"></div><div class="dialog-footer"><p id="editor-error" class="error" role="alert"></p><div><button type="button" class="text-button" data-close>Cancelar</button><button id="save-product" type="submit" class="button lime">Salvar produto ↗</button></div></div></form></dialog><dialog id="confirm-dialog" aria-labelledby="confirm-title"><div class="editor-body"><h2 id="confirm-title"></h2><p id="confirm-text" class="helper"></p><div class="checks"><button id="confirm-no" type="button" class="button outline">Cancelar</button><button id="confirm-yes" type="button" class="button">Confirmar</button></div></div></dialog><div id="toast" role="status"></div>`;bind();}
+async function reload(){
+ const [catalog,registry]=await Promise.all([api('products'),api('categories')]);
+ products=catalog.products;
+ categories=registry;
+ D=Object.fromEntries(Object.entries(departments).map(([audience,dept])=>{
+  const known=new Set(dept.groups.flatMap(group=>group.items.map(item=>item.slug)));
+  const active=new Set(categories.filter(item=>item.audience===audience).map(item=>item.slug));
+  const groups=dept.groups.map(group=>({...group,items:group.items.filter(item=>active.has(item.slug))})).filter(group=>group.items.length);
+  const custom=categories.filter(item=>item.audience===audience&&!known.has(item.slug));
+  if(custom.length)groups.push({name:'Categorias da loja',items:custom});
+  return [audience,{...dept,groups}];
+ }));
+}
 async function start(){view='dashboard';await reload();shell();render();}
 const totalStock=p=>p.variants.filter(v=>v.available).length;
-function render(){root.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('active',button.dataset.view===view));if(view==='dashboard')dashboard();else if(view==='settings')settings();else if(view==='backups')backups();else if(view==='users'&&user==='admin')renderUsers();else productList();}
+function render(){root.querySelectorAll('[data-view]').forEach(button=>button.classList.toggle('active',button.dataset.view===view));if(view==='dashboard')dashboard();else if(view==='categories')renderCategories();else if(view==='settings')settings();else if(view==='backups')backups();else if(view==='users'&&user==='admin')renderUsers();else productList();}
+function renderCategories(){
+ const used=new Set(products.flatMap(product=>product.categoryKeys||[]));
+ $('#content').innerHTML=heading('Categorias','Crie categorias por departamento. Só categorias sem produtos podem ser removidas.')+
+ `<form class="card" id="category-form"><label class="field">Departamento<select id="category-audience" required>${Object.entries(departments).map(([slug,d])=>`<option value="${esc(slug)}">${esc(d.label)}</option>`).join('')}</select></label>
+ <label class="field">Nome da categoria<input id="category-name" required maxlength="80"></label><button class="button">Adicionar categoria</button></form>
+ ${Object.entries(departments).map(([audience,d])=>`<section class="card"><h2>${esc(d.label)}</h2><ul>${categories.filter(item=>item.audience===audience).map(item=>`<li>${esc(item.name)} ${used.has(item.slug)?'<small>Em uso</small>':`<button type="button" class="text-button" data-remove-category="${esc(item.slug)}">Remover</button>`}</li>`).join('')}</ul></section>`).join('')}`;
+ $('#category-form').onsubmit=async event=>{
+  event.preventDefault();
+  const button=event.currentTarget.querySelector('button');
+  button.disabled=true;
+  try{
+   await api('categories',{method:'POST',body:JSON.stringify({audience:$('#category-audience').value,name:$('#category-name').value})});
+   await reload();if(view==='categories')renderCategories();toast('Categoria adicionada.');
+  }catch(error){toast(error.message);}finally{button.disabled=false;}
+ };
+}
 function heading(title,description,add=false){return `<div class="heading"><div><h1>${title}</h1><p>${description}</p></div>${add?'<button class="button lime" id="new-product">Adicionar produto +</button>':''}</div>`;}
 function dashboard(){
  const models=products.filter(p=>!p.basket);
@@ -482,6 +511,14 @@ function bind(){bindingController?.abort();bindingController=new AbortController
   try{await api('users',{method:'DELETE',body:JSON.stringify({username})});await renderUsers();toast('Usuário removido.');}
   catch(error){toast(error.message);}
  }
+}
+if(button.dataset.removeCategory){
+ const category=categories.find(item=>item.slug===button.dataset.removeCategory);
+ if(category&&await confirmAction('Remover categoria?',category.name+' será removida do departamento.')){
+  try{await api('categories',{method:'DELETE',body:JSON.stringify({slug:category.slug})});await reload();if(view==='categories')renderCategories();toast('Categoria removida.');}
+  catch(error){toast(error.message);}
+ }
+ return;
 }
 if(button.dataset.stock)openStock(Number(button.dataset.stock));
 if(button.id==='add-offer'||button.dataset.offer)openOffer(Number(button.dataset.offer)||0);
