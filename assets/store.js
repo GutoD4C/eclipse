@@ -94,10 +94,15 @@
   }
   const cartStorageKey=cfg.demo?'eclipse-demo-cart-v5':'eclipse-cart-v1';
   const activeCategories=await request('categories').catch(()=>[]);
+  const definitions=window.ECLIPSE_DEPARTMENTS||{};
   const activeSlugs=new Set(activeCategories.map(category=>category.slug));
-  const departments=Object.fromEntries(Object.entries(window.ECLIPSE_DEPARTMENTS||{}).map(([slug,department])=>[
-    slug,{...department,groups:department.groups.map(group=>({...group,items:group.items.filter(item=>activeSlugs.has(item.slug))}))}
-  ]));
+  const departments=Object.fromEntries(Object.entries(definitions).map(([slug,department])=>{
+    const known=new Set(department.groups.flatMap(group=>group.items.map(item=>item.slug)));
+    const groups=department.groups.map(group=>({...group,items:group.items.filter(item=>activeSlugs.has(item.slug))}));
+    const custom=activeCategories.filter(item=>item.audience===slug&&!known.has(item.slug));
+    if(custom.length)groups.push({name:'Categorias da loja',items:custom});
+    return [slug,{...department,groups}];
+  }));
   const profileKey=cfg.demo?'eclipse-demo-profile-v1':'eclipse-profile-v1';
   let profile=null;try{profile=normalizeProfile(JSON.parse(localStorage.getItem(profileKey)||'null'));}catch{}
   let cart=[];
@@ -369,7 +374,9 @@
     try{
       const scope=state.view==='offers'?'offers':state.view==='new'?'new':'all';
       const group=state.category.match(/^grupo-(\d+)$/);
-      const category=group?((window.ECLIPSE_DEPARTMENTS||{})[state.audience]?.groups[Number(group[1])]?.items||[]).map(item=>item.slug).join(','):state.category;
+      const groupIndex=group?Number(group[1]):-1;
+      const groupItems=departments[state.audience]?.groups[groupIndex]?.items;
+      const category=group?(groupItems?.length?groupItems:definitions[state.audience]?.groups[groupIndex]?.items||[]).map(item=>item.slug).join(','):state.category;
       const data=await listProducts(new URLSearchParams({scope,offerType:state.view==='offers'?state.offerType:'',order:state.order||'recent',audience:activeAudience(),category,search:state.search,page:state.page,stock:state.stock?'1':'0'}),turn);
       if(turn!==listSequence)return;
       const products=await Promise.all(data.products.map(withComboPhotos));
